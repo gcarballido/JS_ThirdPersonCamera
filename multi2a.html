@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Third Person Shooter three.js webgl</title>
+		<meta charset="utf-8">
+		<link rel="icon" type="image/x-icon" href="favicon.ico" />
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	</head>
+
+	<body>
+		<!-- LIBRERIAS -->
+ 		<script src="lib/jquery-3.3.1.min.js"></script>
+		<script src="lib/three.min.js"></script>
+		<script src="lib/inflate.min.js"></script>
+		<script src="lib/FBXLoader.js"></script>
+		<script src="lib/Detector.js"></script>
+		<script src="lib/stats.min.js"></script>
+		
+		
+		
+		<!-- CODIGO -->
+		<script>
+			// Codigo de GESTION de CAMARA 3 PERSONA
+			var havePointerLock = 'pointerLockElement' in document;
+			var ratonCapturado = false;
+			var sensibilidadX = 0.003;
+			var sensibilidadY = 0.001;
+			
+			if (havePointerLock) {
+				var element = document.body;
+				
+				// Pointer Lock Change
+				var pointerlockchange = function ( event ) {
+					if (document.pointerLockElement === element) {
+						console.log("PointerLockChange Enabled");
+						ratonCapturado = true;
+					} else {
+						console.log("PointerLockChange Disabled");
+						ratonCapturado = false;
+					}
+				};
+				document.addEventListener( 'pointerlockchange', pointerlockchange, false );
+				document.addEventListener( 'mozpointerlockchange', pointerlockchange, false );
+				document.addEventListener( 'webkitpointerlockchange', pointerlockchange, false );
+				
+				// Pointer Lock Error
+				var pointerlockerror = function ( event ) {
+					console.log("error pointerlock");
+				};
+				document.addEventListener( 'pointerlockerror', pointerlockerror, false );
+				document.addEventListener( 'mozpointerlockerror', pointerlockerror, false );
+				document.addEventListener( 'webkitpointerlockerror', pointerlockerror, false );
+				
+				
+				// Listener que Activa el PointerLock
+				document.addEventListener("keydown", function(e) {
+					if (e.keyCode == 81) {											// Tecla Q
+						// Ask the browser to lock the pointer
+						element.requestPointerLock = element.requestPointerLock || element.mozRequestPointerLock || element.webkitRequestPointerLock;
+						element.requestPointerLock();
+					}
+				}, false);
+				
+				// Listener para el MOUSEMOVE
+				document.addEventListener("mousemove", function(e) {
+					var movementX = e.movementX || 0;
+					var movementY = e.movementY || 0;
+					
+					cameraYaw = cameraYaw - sensibilidadX*movementX;
+					cameraPitch = cameraPitch - sensibilidadY*movementY;
+					
+					// Imponemos limites arriba y abajo de la camara (Pitch)
+					limSupPitch = 1.15;
+					limInfPitch = 0;
+					if (cameraPitch >= limSupPitch) {cameraPitch = limSupPitch;}
+					if (cameraPitch <= limInfPitch) {cameraPitch = limInfPitch;}
+					//console.log("movementX=" + movementX, "movementY=" + movementY);
+				}, false);
+			} else {
+				console.log("Your browser does not support PointerLock API");
+			}
+			
+			
+			// PANTALLA COMPLETA
+			// Creamos un listener para saber si entramos en pantalla completa
+			document.addEventListener("keydown", function(e) {
+				if (e.keyCode == 13) {											// Tecla Enter
+					toggleFullScreen();
+				}
+			}, false);
+			function toggleFullScreen() {
+				if (!document.webkitFullscreenElement) {
+					document.documentElement.webkitRequestFullscreen();
+				} else {
+					if (document.webkitExitFullscreen()) {
+						document.webkitExitFullscreen(); 
+					}
+				}
+			}
+
+//==============================================================================
+//==============================================================================
+
+			// Creacion de ESCENA de JUEGO
+			if (!Detector.webgl) Detector.addGetWebGLMessage();
+			var container;
+			var stats;
+			var controls;
+			var scene, renderer, light;
+			
+			// Cubo posicion
+			var cube = new THREE.Mesh;
+			var vector3 = new THREE.Vector3();
+			
+			// Camera
+			var camera;
+			var cameraYaw = 0;													// Giro lateral
+			var cameraPitch = 0.8;												// Giro vertical
+			var cameraOffsetX = 50;
+			var cameraOffsetY = 150;
+			var cameraOffsetZ = 200;
+			
+			//Personaje
+			var personajeModel = new THREE.Object3D();
+			var angPersonaje = 0;
+			var velPersonaje = 2;
+			var estadoProta = "otro";
+			var hombro = 0;
+			var desfasehombro = 25;
+			
+			//Variables de ANIMACIONES
+			var clock = new THREE.Clock();
+			var mixerProta = new THREE.AnimationMixer();
+			//Clips de Animaciones
+			var animacionIdle, animacionWalking;
+			
+			//Actions Personaje
+			var actionIdle, actionWalking;
+			
+			// CONTROLES COCHE
+			//Inicializacion de las variables de tecla
+			var teclaW = false;
+			var teclaA = false;
+			var teclaD = false;
+			var teclaS = false;
+			
+			var clickIzquierdo = false;
+			var clickCentral = false;
+			var clickDerecho = false;
+			
+			var bloqueoInput = false;
+			//Control de las teclas		
+			$(document).ready(function(){
+			    //Pulso tecla
+			    $(document).keydown(function(event){
+			        if (event.which == 87 && !bloqueoInput) {                               //Tecla W
+			            teclaW = true;
+			        }
+			        if (event.which == 65 && !bloqueoInput) {                               //Tecla A
+			            teclaA = true;
+			        }
+			        if (event.which == 68 && !bloqueoInput) {                               //Tecla D
+			            teclaD = true;
+			        }
+			        if (event.which == 83 && !bloqueoInput) {                               //Tecla S
+			            teclaS = true;
+			        }
+			    });
+			    
+			    //Suelto tecla
+			    $(document).keyup(function(event){
+			        if (event.which == 87) {                                                //Tecla W
+			            teclaW = false;
+			        }
+			        if (event.which == 65) {                                                //Tecla A
+			            teclaA = false;
+			        }
+			        if (event.which == 68) {                                                //Tecla D
+			            teclaD = false;
+			        }
+			        if (event.which == 83) {                                                //Tecla S
+			            teclaS = false;
+			        }
+			    });
+			    
+			    // Controles raton
+			    $(document).mousedown(function(event){
+			    	if (ratonCapturado) {										// Solo si tenemos el raton capturado para jugar
+				    	if (event.button == 0) {clickIzquierdo = true;}			// Click izquierdo
+				    	if (event.button == 1) {clickCentral = true;}			// Click central
+				    	if (event.button == 2) {clickDerecho = true;}			// Click derecho
+			    	}
+			    });
+			    $(document).mouseup(function(event){
+			    	if (ratonCapturado) {										// Solo si tenemos el raton capturado para jugar
+				    	//if (event.button == 0) {clickIzquierdo = false;}
+				    	//if (event.button == 1) {clickCentral = false;}
+				    	if (event.button == 2) {clickDerecho = false;}			// Click derecho
+			    	}
+			    });
+			});
+			
+			// Llamamos al init()
+			init();
+        	
+        	// INICIALIZACION
+			function init() {
+				container = document.createElement( 'div' );
+				document.body.appendChild( container );
+				
+				// Escena
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color( 0xa0a0a0 );
+				scene.fog = new THREE.Fog( 0xa0a0a0, 2000, 10000 );
+				
+				// Camara
+				camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 1, 50000);
+				var vectorCamera = new THREE.Vector3();
+				scene.add(camera);
+				
+				// OrbitControl
+				//controls = new THREE.OrbitControls(camera);
+				//controls.target.set(0, 100, 0);
+				//controls.update();
+				
+				// Pointer Lock Controls
+				//controls = new THREE.PointerLockControls(camera);
+				//scene.add(controls.getObject());
+				
+				// Luz
+				light = new THREE.HemisphereLight( 0xffffff, 0x444444 );
+				light.position.set( 0, 200, 0 );
+				scene.add( light );
+				light = new THREE.DirectionalLight( 0xffffff );
+				light.position.set( 0, 200, 100 );
+				light.castShadow = true;
+				light.shadow.mapSize.width = 512;  // default
+                light.shadow.mapSize.height = 512; // default
+				scene.add( light );
+				
+				// Camera Helper
+				//scene.add(new THREE.CameraHelper(light.shadow.camera));
+				scene.add(new THREE.CameraHelper(camera));
+				
+				// Ground
+				var mesh = new THREE.Mesh( new THREE.PlaneGeometry( 2000, 2000 ), new THREE.MeshPhongMaterial( { color: 0x999999, depthWrite: false } ) );
+				mesh.rotation.x = - Math.PI / 2;
+				mesh.receiveShadow = true;
+				scene.add( mesh );
+				var grid = new THREE.GridHelper( 2000, 20, 0x000000, 0x000000 );
+				grid.material.opacity = 0.2;
+				grid.material.transparent = true;
+				scene.add( grid );
+				
+				// MODELO PERSONAJE
+				// Idle
+				var loader = new THREE.FBXLoader();
+				loader.load( 'personajeIdle.fbx', function ( object ) {
+					object.animations[0].name = "Idle";
+					animacionIdle = object.animations[0];						            		// Solo la animacion de idle (1)
+					
+					// Walk
+					var loader = new THREE.FBXLoader();
+					loader.load( 'personajeAndar.fbx', function ( object ) {
+						object.animations[0].name = "Walking";
+					    animacionWalking = object.animations[0];					            	// Solo la animacion de walking (2)
+					    
+					    // Mesh
+					    var loader = new THREE.FBXLoader();
+						loader.load('Remy.fbx', function ( object ) {
+							//Metemos las animaciones en el objeto
+							object.animations.push(animacionIdle);					                //animations[0]
+							object.animations.push(animacionWalking);				                //animations[1]
+							
+							//Sombras al objeto
+							object.traverse(function (child) {
+								if (child.isMesh) {
+									child.castShadow = true;
+									child.receiveShadow = true;
+									child.material.skinning = true;
+								}
+							});
+					    	personajeModel = object;
+					    	personajeModel.scale.x = 0.4;
+					    	personajeModel.scale.y = 0.4;
+					    	personajeModel.scale.z = 0.4;
+					    	scene.add(personajeModel);
+					    	
+							//Hacemos un mixer con las animaciones de este objeto
+							mixerProta = new THREE.AnimationMixer(personajeModel);
+							
+							//Creamos los ACTION del mixer
+							mixerProta.clipAction(animacionIdle);						//Idle
+							mixerProta.clipAction(animacionWalking);					//Walking
+							actionIdle = mixerProta._actions[0];
+							actionWalking = mixerProta._actions[1];
+							estadoProta = "idle";
+						});
+					});
+				});
+				
+				// RENDERER
+				//renderer = new THREE.WebGLRenderer();
+				renderer = new THREE.WebGLRenderer({antialias: true});
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.shadowMap.enabled = true;
+                renderer.shadowMapSoft = true;
+                
+				container.appendChild( renderer.domElement );
+				window.addEventListener( 'resize', onWindowResize, false );
+				
+				// STATS
+				//stats = new Stats();
+				//container.appendChild( stats.dom );
+				
+				// CUBO de posiciones
+				function cubopos(posx, posy, posz, sx, sy, sz) {
+					var vector3 = new THREE.Vector3(sx, sy, sz);
+					var geometry = new THREE.BoxGeometry(1, 1, 1);
+					var material = new THREE.MeshBasicMaterial({color: 0x00ff00});
+					var cube = new THREE.Mesh(geometry, material);
+					cube.scale.copy(vector3);
+					cube.position.set(posx, posy, posz);
+					scene.add(cube);
+				}
+				
+				cubopos(1000, 0, 1000, 10, 20, 10);
+				
+				// Llamamos al animate
+				animate();
+			}
+			
+			// FUNCION REESCALADO
+			function onWindowResize() {
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+				renderer.setSize( window.innerWidth, window.innerHeight );
+			}
+			
+			// FUNCION CAMERA
+			function camara1ra(model, desfase) {
+				camera.position.x = model.position.x + (desfase) - 80*Math.sin(model.rotation.y);						// Ajustamos posicion
+			    camera.position.y = model.position.y + 150;
+			    camera.position.z = model.position.z - 80*Math.cos(model.rotation.y);
+			    
+			    //Modificar para hacerlo con 1ra persona
+			    camera.rotation.x = 0;					// Ajustamos angulo
+			    camera.rotation.y = model.rotation.y + Math.PI;
+			    camera.rotation.z = 0;
+			}
+			function camara3ra(model) {
+			    // Actualizamos POSICION de camara
+			    camera.position.x = model.position.x + 200*Math.cos(cameraYaw);
+			    camera.position.y = model.position.y + 150*Math.tan(cameraPitch);
+			    camera.position.z = model.position.z + 200*Math.sin(cameraYaw);
+			    
+			    // Actualizamos ANGULO de camara
+				vectorCamera = new THREE.Vector3(model.position.x+10,
+												  model.position.y+150,
+												  model.position.z);
+			    camera.lookAt(vectorCamera);
+			}
+
+			// FUNCIONES ANIMACION
+			function prepareCrossFade(startAction, endAction, duration) {
+				actionIdle.paused = false;
+				actionWalking.paused = false;
+				setWeight( endAction, 1 );
+				endAction.time = 0;
+				startAction.crossFadeTo( endAction, duration, true );
+			}
+			
+			function setWeight( action, weight ) {
+				action.enabled = true;
+				action.setEffectiveTimeScale( 1 );
+				action.setEffectiveWeight( weight );
+			}
+			
+			// FUNCION DE ANIMATE PERSONAJE
+			function animatePersonaje() {
+			    // Comprobacion de estados y actuacion
+			    switch (estadoProta) {
+			        // IDLE
+			        case "idle":
+			        	// Actualizamos camara 3ra
+			        	camara3ra(personajeModel);
+			        	
+			            //Corregimos angulo del personaje
+			            personajeModel.rotation.y = -(angPersonaje-Math.PI/2);
+			            personajeModel.visible = true;
+			            actionIdle.play();
+			            // Caminamos
+			            if (teclaW || teclaA || teclaS || teclaD) {
+			                prepareCrossFade(actionIdle, actionWalking, 0.2);
+			                estadoProta = "walk";
+			            }
+			            
+			            // Apuntamos
+			            if (clickDerecho) {
+			            	// crossfade de apuntado
+			            	estadoProta = "aim";
+			            }
+			            break;
+			        
+			        // WALKING
+			        case "walk":
+			        	// Actualizamos camara 3ra
+			        	camara3ra(personajeModel);
+			        	
+			            // Movimiento referente a la camara
+			            if (teclaW && !teclaA && !teclaD && !teclaS) {angPersonaje = cameraYaw - Math.PI;}
+			            if (teclaA && !teclaW && !teclaD && !teclaS) {angPersonaje = cameraYaw + 0.5*Math.PI;}
+			            if (teclaS && !teclaA && !teclaD && !teclaW) {angPersonaje = cameraYaw + 0;}
+			            if (teclaD && !teclaA && !teclaW && !teclaS) {angPersonaje = cameraYaw - 0.5*Math.PI;}
+			            
+			            if (teclaW && teclaA && !teclaD && !teclaS) {angPersonaje = cameraYaw + 0.75*Math.PI;}
+			            if (teclaW && !teclaA && teclaD && !teclaS) {angPersonaje = cameraYaw - 0.75*Math.PI;}
+			            if (!teclaW && teclaA && !teclaD && teclaS) {angPersonaje = cameraYaw + 0.25*Math.PI;}
+			            if (!teclaW && !teclaA && teclaD && teclaS) {angPersonaje = cameraYaw - 0.25*Math.PI;}
+			            
+			            // Corregimos angulo del personaje
+			            personajeModel.rotation.y = -(angPersonaje-Math.PI/2);
+			            personajeModel.visible = true;
+			            velPersonaje = 2;
+			            personajeModel.position.x += Math.cos(angPersonaje)*velPersonaje;
+			            personajeModel.position.z += Math.sin(angPersonaje)*velPersonaje;
+			            actionWalking.play();
+			            
+			            // Paramos
+			            if (!teclaW && !teclaA && !teclaS && !teclaD) {
+			                prepareCrossFade(actionWalking, actionIdle, 0.2);
+			                estadoProta = "idle";
+			            }
+			            break;
+			            
+		            // APUNTANDO IDLE
+		            case "aim":
+		            	// El personaje se gira en la direccion en la que apunta
+		            	angPersonaje = cameraYaw + Math.PI;
+		            	personajeModel.rotation.y = -(angPersonaje-Math.PI/2);
+		            	
+		            	// Actualizamos a camara 1ra
+		            	camara1ra(personajeModel, desfasehombro);
+		            	
+		            	// Disparamos
+		            	if (clickIzquierdo) {
+		            		// animacion disparo
+		            		clickIzquierdo = false;
+		            	}
+		            	if (clickCentral) {										// Cambio de hombro
+		            		if (hombro=1) {hombro = 0; desfasehombro = 25;}
+		            		if (hombro=0) {hombro = 1; desfasehombro = -25;}
+		            		clickCentral = false;
+		            	}
+		            	if (!clickDerecho) {									// Dejamos de apuntar
+		            		// crossfade de dejar de apuntar
+		            		estadoProta = "idle";
+		            	}
+		            	break;
+				}
+			}
+			
+			// ANIMATE
+			function animate() {
+			    animatePersonaje();
+			    
+				requestAnimationFrame(animate);
+				mixerProta.update(clock.getDelta());
+				
+				//controls.update();
+				renderer.render(scene, camera);
+				//stats.update();
+			}
+		</script>
+	</body>
+</html>
